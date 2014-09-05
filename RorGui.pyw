@@ -1,5 +1,6 @@
 import Tkinter as tk
 import ttk
+import sys
 
 ###################################################
 # A Frame Classes (BOTTOM)
@@ -12,33 +13,80 @@ class StatusNotebook(ttk.Notebook):
     def InsertTab(self, newTabFrame, myTabName):
         self.add(newTabFrame, text=myTabName)
         
-class PlayerStatus(ttk.Frame):
-    def __init__(self, master=None):
-        ttk.Frame.__init__(self, master, padding=10)
-        self.pack(side=tk.LEFT, expand=tk.YES, fill=tk.BOTH)
-        # Create a tree view in the fame        
-        self.ps = ttk.Treeview(master=self, show='tree')
-        self.ps.pack(side=tk.LEFT, expand=tk.YES, fill=tk.BOTH)
-        # Create a scrollbar        
-        self.ysb = ttk.Scrollbar(self, orient='vertical', command=self.ps.yview)
-        self.ysb.pack(side=tk.RIGHT, expand=tk.NO, fill=tk.Y)
-        self.ps.configure(yscroll=self.ysb.set)
+class StdoutRedirector(ttk.Frame):
+    def __init__(self, text_area):
+        self.text_area = text_area
         
-    def AddText(self, text):
-        self.ps.insert('', 'end', text=text)
+    def write(self, strg):
+        self.text_area.insert(tk.END, strg)
+        #self.text_area.AddText(strg)
+        self.text_area.see(tk.END)
 
+class CmdFrame(ttk.LabelFrame):
+    def __init__(self, master=None):
+        ttk.LabelFrame.__init__(self, master, text="Actions", padding=10)
+        self.pack(expand=tk.NO, fill=tk.Y)
+
+        # Create function pointer hooks        
+        self.next_phase_hook = self.DummyFunc
+
+        # Create buttons
+        self.make_widgets()        
+        
+    def make_widgets(self):
+        self.next_phase = ttk.Button(self, 
+                                     command = lambda
+                                     arg1='next_phase' :
+                                     self.ButtonPressed(arg1))
+        self.next_phase["text"] = "Next Phase"   ### (1)
+        self.next_phase.pack()
+        self.quit_game = ttk.Button(self, 
+                                     command = lambda
+                                     arg1='quit_game' :
+                                     self.ButtonPressed(arg1))
+        self.quit_game["text"] = "Quit"   ### (1)
+        self.quit_game.pack()
+    
+    def ButtonPressed(self, arg1):
+        try: 
+            if arg1 == 'next_phase':
+                self.next_phase_hook()
+        except:
+            print arg1 + ' Button press did not work'
+            
+    def AddHook(self,button,func):
+        try:
+            if button == 'next_phase':
+                self.next_phase_hook = func
+        except:
+            print 'function hook did not work for' + button
+        
+    def DummyFunc(self):
+        print 'Dummy Func'
+    
 ###################################################
 # B Frame Classes (LEFT)
 ###################################################
-class GamePhaseFrame(ttk.Frame):
+class GamePhaseFrame(ttk.LabelFrame):
     def __init__(self, master=None):
-        ttk.Frame.__init__(self, master, padding=10)
+        ttk.LabelFrame.__init__(self, master, text="Game Status", padding=10)
         self.pack(expand=tk.NO, fill=tk.X)
         self.make_widgets()
         
     def make_widgets(self):
-        widget = ttk.Label(self, text=" MORTALITY ", borderwidth=10, relief=tk.RAISED)
-        widget.pack(expand=tk.NO, fill=tk.X)
+        self.TURN = tk.StringVar()
+        self.TURN.set(" TURN 1 ")
+        self.turn_label = ttk.Label(self, textvariable=self.TURN, borderwidth=10, relief=tk.RAISED)
+        self.turn_label.pack(expand=tk.NO, fill=tk.X)
+        
+        self.PHASE = tk.StringVar()
+        self.PHASE.set(" MORTALITY ")
+        self.phase_label = ttk.Label(self, textvariable=self.PHASE, borderwidth=10, relief=tk.RAISED)
+        self.phase_label.pack(expand=tk.NO, fill=tk.X)
+        
+    def SetPhase(self, turnNum, phaseText):
+        self.TURN.set(" TURN %d " % (turnNum))
+        self.PHASE.set(" %s " % (phaseText))
     
 class StateFrame(ttk.LabelFrame):
     def __init__(self, master=None):
@@ -88,35 +136,169 @@ class EventFrame(ttk.LabelFrame):
 ###################################################
 # C Frame Classes (TOP SIDE)
 ###################################################
-class TreeView(ttk.Frame):
-    def __init__(self, master=None):
-        ttk.Frame.__init__(self, master, padding=10)
-        self.pack(expand=tk.YES, fill=tk.BOTH)
-        
-        colStr = ("Name","Mil","Oratory","Inf","Pop","Knights")
-        
-        # Create a Treeview
-        self.t = ttk.Treeview(master=self, columns=colStr, show='headings')
-        self.t.pack(expand=tk.YES, fill=tk.BOTH)
-        for c in colStr:
-            self.t.heading(c, text=c.title())
-            width = 40
-            if c == "Name":
-                width = 100
-            self.t.column(c, width=width, stretch=0, anchor='center')
-            
-    def InsertItem(self, tup):
-        self.t.insert('', 'end', values=tup)
-        
 class CenterNotebook(ttk.Notebook):
+###########################################################################
+# @brief User notebook frame
+###########################################################################
     def __init__(self, master=None):
         ttk.Notebook.__init__(self, master)        
         self.pack(expand=tk.YES, fill=tk.BOTH)
         
     def InsertTab(self, newTabFrame, myTabName):
+        ###########################################################################
+        # @brief Insert frame into Notebook
+        # @param newTabFrame - frame to add to notebook
+        # @param myTabName - name of tab
+        ###########################################################################
         self.add(newTabFrame, text=myTabName)
         
-
+class FactionOverview(ttk.Frame):
+    def __init__(self, master=None):
+        ttk.Frame.__init__(self, master, padding=10)
+        self.pack(expand=tk.YES, fill=tk.BOTH)
+        # Column string        
+        colStr = ("Faction Name","Military","Oratory","Inf","Votes","Treasury","")
+        # Create a Treeview
+        self.t = ttk.Treeview(master=self, columns=colStr, show='headings')
+        self.t.pack(expand=tk.YES, fill=tk.BOTH)
+        for c in colStr:
+            self.t.heading(c, text=c.title())
+            width = 75
+            an    = 'center'
+            st    = 0
+            if c == "Faction Name":
+                width = 200
+                an = 'w'
+            elif c == "":
+                st = 1
+            self.t.column(c, width=width, stretch=st, anchor=an)
+        
+    def InsertItem(self, itemId, tup):
+        ###########################################################################
+        # @brief Insert item into list at the very end
+        # @param itemId - new items iid
+        # @param tup - New data
+        ###########################################################################
+        self.t.insert('', 'end', iid=itemId, values=tup)
+        
+    def ModifyItem(self, itemId, tup):
+        ###########################################################################
+        # @brief Modify item from the list where user provided the iid
+        # @param itemId - iid of the item to delete
+        # @param tup - New data
+        ###########################################################################
+        self.t.item(itemId, values=tup)
+        x = self.t.set(itemId)
+        return x
+    
+    def DeleteItem(self, itemId):
+        ###########################################################################
+        # @brief Delete item from the list where user provided the iid
+        # @param itemId - iid of the item to delete
+        ###########################################################################
+        if self.t.exists(itemId):
+            self.t.delete(itemId)
+        
+    def SortList(self, itemIdList):
+        ###########################################################################
+        # @brief Get a list of item ids and sort them in a list
+        # @param itemIdList - list of iids for the faction tree
+        ###########################################################################
+        idx = 0
+        for i in itemIdList:
+            if self.t.exists(i):
+                self.t.move(i, '', idx)
+                idx += 1
+                
+class FactionView(ttk.Frame):
+    def __init__(self, master=None):
+        ttk.Frame.__init__(self, master, padding=10)
+        self.pack(expand=tk.YES, fill=tk.BOTH)
+        # Column string
+        colStr = ("Name","Military","Oratory","Inf","Pop","Loyalty","Knights","Votes","Money","Location","Concessions","")
+        # Create a Treeview
+        self.t = ttk.Treeview(master=self, columns=colStr, show='headings')
+        self.t.pack(expand=tk.YES, fill=tk.BOTH)
+        for c in colStr:
+            self.t.heading(c, text=c.title())
+            width = 50
+            an    = 'center'
+            st    = 0
+            if c == "Name":
+                width = 200
+                an = 'w'
+            elif c == "Location":
+                width = 70
+                an = 'center'
+            elif c == "Concessions":
+                width = 350
+                an = 'w'
+            elif c == "":
+                st = 1
+            self.t.column(c, width=width, stretch=st, anchor=an)
+        
+        # Setup binding
+        self.t.bind("<Double-1>", self.OnDoubleClick)
+            
+    def InsertItem(self, itemId, tup):
+        ###########################################################################
+        # @brief Insert item into list at the very end
+        # @param itemId - new items iid
+        # @param tup - New data
+        ###########################################################################
+        self.t.insert('', 'end', iid=itemId, values=tup)
+        
+    def ModifyItem(self, itemId, tup):
+        ###########################################################################
+        # @brief Modify item from the list where user provided the iid
+        # @param itemId - iid of the item to delete
+        # @param tup - New data
+        ###########################################################################
+        if self.t.exists(itemId):
+            self.t.item(itemId, values=tup)
+            x = self.t.set(itemId)
+            return x
+    
+    def DeleteItem(self, itemId):
+        ###########################################################################
+        # @brief Delete item from the list where user provided the iid
+        # @param itemId - iid of the item to delete
+        ###########################################################################
+        if self.t.exists(itemId):
+            self.t.delete(itemId)
+            
+    def SortList(self, itemIdList):
+        ###########################################################################
+        # @brief Get a list of item ids and sort them in a list
+        # @param itemIdList - list of iids for the faction tree
+        ###########################################################################
+        idx = 0
+        for i in itemIdList:
+            if self.t.exists(i):
+                self.t.move(i, '', idx)
+                idx += 1
+            
+    def SortCol(self, col):
+        print 'Sort by ', col
+        x = self.t.get_children()
+        #self.myFaction.senatorList = sorted(self.myFaction.senatorList, key=lambda sen: sen.influence, reverse=True)            
+        return x
+    
+    def OnDoubleClick(self, event):
+        tv = event.widget
+        try:
+            col = tv.identify_column(event.x)
+            print col
+        except:
+            col = ''
+        try:
+            row = tv.identify_row(event.y)
+            print row
+        except:
+            row = ''
+        if (row == '') and (col != ''):
+            self.SortCol(col)
+                
 class ROR_GUI:
     def __init__(self, master=None):
         # Setup Master Window fields
@@ -146,81 +328,17 @@ class ROR_GUI:
         ###################################################
         # Populate A Frames (BOTTOM)
         ###################################################
-        self.status = StatusNotebook(self.bottom_frame)       
-        self.p1 = PlayerStatus(self.status)
-        self.p2 = PlayerStatus(self.status)
-        #self.p3 = PlayerStatus(self.status)
-        #self.p4 = PlayerStatus(self.status)
-        #self.p5 = PlayerStatus(self.status)
+        self.statusNotebook = StatusNotebook(self.bottom_frame)
+        self.statusNotebook.pack(side=tk.LEFT)
         
-        self.status.InsertTab(self.p1, "P1")
-        self.status.InsertTab(self.p2, "P2")
-        #self.status.InsertTab(self.p3, "P3")
-        #self.status.InsertTab(self.p4, "P4")
-        #self.status.InsertTab(self.p5, "P5")
+        # Redirect stdout
+        self.outputPanel = tk.Text(self.statusNotebook, wrap='word', height=15)
+        self.statusNotebook.InsertTab(self.outputPanel, "LOG")
+        sys.stdout = StdoutRedirector(self.outputPanel)
         
-        self.p1.AddText("Hello my name is joe")
-        self.p1.AddText("I have a wife and three kids")
-        self.p2.AddText("Hello my name is joe")
-        self.p2.AddText("I have a wife and three kids")
-        self.p2.AddText("Hello my name is joe")
-        self.p2.AddText("I have a wife and three kids")
-        self.p2.AddText("Hello my name is joe")
-        self.p2.AddText("I have a wife and three kids")
-        self.p2.AddText("Hello my name is joe")
-        self.p2.AddText("I have a wife and three kids")
-        self.p2.AddText("Hello my name is joe")
-        self.p2.AddText("I have a wife and three kids")
-        self.p2.AddText("Hello my name is joe")
-        self.p2.AddText("I have a wife and three kids")
-        self.p2.AddText("Hello my name is joe")
-        self.p2.AddText("I have a wife and three kids")
-        self.p2.AddText("Hello my name is joe")
-        self.p2.AddText("I have a wife and three kids")
-        self.p2.AddText("Hello my name is joe")
-        self.p2.AddText("I have a wife and three kids")
-        self.p2.AddText("Hello my name is joe")
-        self.p2.AddText("I have a wife and three kids")
-        self.p2.AddText("Hello my name is joe")
-        self.p2.AddText("I have a wife and three kids")
-        self.p2.AddText("Hello my name is joe")
-        self.p2.AddText("I have a wife and three kids")
-        self.p2.AddText("Hello my name is joe")
-        self.p2.AddText("I have a wife and three kids")
-        self.p2.AddText("Hello my name is joe")
-        self.p2.AddText("I have a wife and three kids")
-        self.p2.AddText("Hello my name is joe")
-        self.p2.AddText("I have a wife and three kids")
-        self.p2.AddText("Hello my name is joe")
-        self.p2.AddText("I have a wife and three kids")
-        self.p2.AddText("Hello my name is joe")
-        self.p2.AddText("I have a wife and three kids")
-        self.p2.AddText("Hello my name is joe")
-        self.p2.AddText("I have a wife and three kids")
-        self.p2.AddText("Hello my name is joe")
-        self.p2.AddText("I have a wife and three kids")
-        self.p2.AddText("Hello my name is joe")
-        self.p2.AddText("I have a wife and three kids")
-        self.p2.AddText("Hello my name is joe")
-        self.p2.AddText("I have a wife and three kids")
-        self.p2.AddText("Hello my name is joe")
-        self.p2.AddText("I have a wife and three kids")
-        self.p2.AddText("Hello my name is joe")
-        self.p2.AddText("I have a wife and three kids")
-        self.p2.AddText("Hello my name is joe")
-        self.p2.AddText("I have a wife and three kids")
-        self.p2.AddText("Hello my name is joe")
-        self.p2.AddText("I have a wife and three kids")
-        self.p2.AddText("Hello my name is joe")
-        self.p2.AddText("I have a wife and three kids")
-        self.p2.AddText("Hello my name is joe")
-        self.p2.AddText("I have a wife and three kids")
-        self.p2.AddText("Hello my name is joe")
-        self.p2.AddText("I have a wife and three kids")
-        self.p2.AddText("Hello my name is joe")
-        self.p2.AddText("I have a wife and three kids")
-        self.p2.AddText("Hello my name is joe")
-        self.p2.AddText("I have a wife and three kids")
+        # Cmd frame contains the various options user can select
+        self.cmdFrame = CmdFrame(self.bottom_frame)
+        self.cmdFrame.pack(side=tk.RIGHT)      
 
         ###################################################
         # Populate B Frames (LEFT SIDE)
@@ -233,35 +351,15 @@ class ROR_GUI:
         ###################################################
         # Populate C Frames (TOP)
         ###################################################
-        self.nb = CenterNotebook(self.top_frame)
-        self.tree1 = TreeView(self.nb)
-        self.tree2 = TreeView(self.nb)
-        self.nb.InsertTab(self.tree1, "Tab1")
-        self.nb.InsertTab(self.tree2, "Cato Family")
+        self.factionNotebook = CenterNotebook(self.top_frame)
+        self.factionOverview = FactionOverview() 
+        self.factionNotebook.InsertTab(self.factionOverview, 'Factions')
+        self.playerFaction   = []
         
-        self.tree1.InsertItem(("Steve", 1, 1, 1, 2, 0))
-        self.tree2.InsertItem(("Cato the Elder", 1, 1, 1, 2, 0))
-        self.tree2.InsertItem(("Cato the Younger", 1, 1, 1, 2, 0))
-        self.tree2.InsertItem(("Cato the Dumber", 1, 1, 1, 2, 0))
-        self.tree2.InsertItem(("Cato's Mom", 1, 1, 1, 2, 0))
-        self.tree2.InsertItem(("Cato's Dad", 1, 1, 1, 2, 0))
-        self.tree2.InsertItem(("Cato the Old Dud", 1, 1, 1, 2, 0))
-        self.tree2.InsertItem(("Cato the Butler", 1, 1, 1, 2, 0))
-        self.tree2.InsertItem(("Cato the Dogface", 1, 1, 1, 2, 0))
-        self.tree2.InsertItem(("Cato the Very Loud Guy", 1, 1, 1, 2, 0))
-        self.tree2.InsertItem(("Cato the Frog", 1, 1, 1, 2, 0))
-        self.tree2.InsertItem(("Spartacus", 1, 1, 1, 2, 0))
-        self.tree2.InsertItem(("Cato's mailman", 1, 1, 1, 2, 0))
-        
-        #self.forum = ttk.LabelFrame(self.top_frame, padding="3m", text="Forum")
-        #self.forum.pack(side=tk.TOP, expand=tk.YES, fill=tk.BOTH)
-        #self.war_frame = ttk.LabelFrame(self.top_frame, padding="3m", text="Wars")
-        #self.war_frame.pack(side=tk.TOP, expand=tk.NO, fill=tk.BOTH)
-        #self.t4 = ttk.Label(self.forum, text="first")
-        #self.t4.pack()
-        #self.t5 = ttk.Label(self.war_frame, text="second")
-        #self.t5.pack()
-        
-root = tk.Tk()
-app = ROR_GUI(root)
-root.mainloop()        
+    def AddPlayer(self, name):
+        # Add player to faction notebook
+        ret = FactionView(self.factionNotebook)
+        self.factionNotebook.InsertTab(ret, name)
+        self.playerFaction.append(ret)
+        return ret, self.factionOverview
+    

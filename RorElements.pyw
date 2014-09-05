@@ -1,7 +1,10 @@
-from Tkinter import *
+import Tkinter as tk
 import random
+import threading
+import RorGui
+import Queue
 
-# @brief 
+# @brief
 #    constant holds all possible family cards
 #
 # Packing consists of 
@@ -72,13 +75,45 @@ enemyLeaderList = [( 1, "HANNIBAL",      7,  9, 16, (1,2)),
                    ( 4, "HAMILCAR",      3,  8, 12, (1,2))]
 
     
+def Roll1d6(self):
+###########################################################################
+# @brief Roll 1 six sided dice
+#
+# @return die 1 result
+###########################################################################
+    return random.randint(1,6)
+        
+def Roll2d6(self):
+###########################################################################
+# @brief Roll 2 six sided dice
+#
+# @return total, die 1 result, die 2 result
+###########################################################################
+    die1 = random.randint(1,6)
+    die2 = random.randint(1,6)
+    total = die1 + die2
+    return total, die1, die2
+
+def Roll3d6(self):
+###########################################################################
+# @brief Roll 3 six sided dice
+#
+# @return total, die 1 result, die 2 result, die 3 result
+###########################################################################
+    die1 = random.randint(1,6)
+    die2 = random.randint(1,6)
+    die3 = random.randint(1,6)
+    total = die1 + die2 + die3
+    return total, die1, die2, die3
+
 class Senator:
-# @brief
-#    Document a senator card in ROR
-#    
+###########################################################################
+# @brief Document a senator card in ROR
+###########################################################################
     instances = []
     
     def __init__(self, famId, name, military, oratory, loyalty, inf = 0, pop = 0, statesman=False):
+        # Basic skills
         self.famId = famId
         self.name = name
         self.military = military
@@ -90,10 +125,12 @@ class Senator:
         self.knights = 0
         self.governer = []
         self.concessions = []
-        self.allegiance = []
-        self.corruption = False
-        self.priorCounsel = False
+        self.allegiance = []        
+        self.minor_corruption = False
+        self.major_corruption = False
+        self.priorCouncil = False
         self.inRome = True
+        self.office = ''
         self.factionLeader = False
         self.statesman = statesman
         Senator.instances.append(self)
@@ -103,24 +140,57 @@ class Senator:
         if self.factionLeader:
             result = 3
         else:
-            result = 1
-            
+            result = 1            
         # Get Money for knights
-        result += self.knights
-            
+        result += self.knights            
         return result
+    
+    def GetName(self):
+        nameWithTitle = self.name
+        if self.factionLeader:
+            nameWithTitle += ' (FL)'            
+        if self.office == 'Dictator':
+            nameWithTitle += ' (D)'
+        elif self.office == 'Master of Horse':
+            nameWithTitle += ' (MoH)'
+        elif self.office == 'Rome Council':
+            nameWithTitle += ' (RC)'
+        elif self.office == 'Field Council':
+            nameWithTitle += ' (FC)'
+        elif self.office == 'Censor':
+            nameWithTitle += ' (C)'
+        elif self.office == 'Procouncil':
+            nameWithTitle += ' (PRO)'
+        if self.priorCouncil:
+            nameWithTitle += ' (PC)'            
+        return nameWithTitle
+    
+    def GetLocation(self):
+        locStr = ''
+        if self.inRome:
+            locStr = 'Rome'
+        return locStr
+        
+    def GetConcessions(self):
+        consessionStr = ''
+        return consessionStr        
+        
+    def GetTup(self):
+        #colStr = ("Name","Military","Oratory","Inf","Pop","Loyalty","Knights","Votes","Money","Location","Concessions")
+        return (self.GetName(), self.military, self.oratory, self.influence, self.pop, self.loyalty, \
+                self.knights, self.oratory+self.knights, self.money, self.GetLocation(), self.GetConcessions())
         
     def dump(self):
         print("%20s m%1d o%1d i%02d p%02d k%1d t%03d" % \
-              (self.name, self.military, self.oratory, self.influence, self.pop, self.knights, self.money))
+              (self.GetName(), self.military, self.oratory, self.influence, self.pop, self.knights, self.money))
         
 class Faction:
-# @brief
-#    Class represents a players faction
-#
+###########################################################################
+# @brief Class represents a players faction
+###########################################################################
     def __init__(self, name):
-        self.name = name
-        self.treasury = 0
+        self.name      = name
+        self.treasury  = 0
         self.milRating = 0
         self.infRating = 0
         self.ortRating = 0
@@ -148,15 +218,79 @@ class Faction:
     def AssignPlayer(self, player):
         self.myPlayer = player
         
-    def AddSenator(self, senatorTuple):
+    def AddSenator(self, senatorTuple, addIndex=-1, addToFrame=False):
+        ###########################################################################
+        # @brief Add senator to the faction
+        # @param [in] senatorTuple (idNum, name, milR, ortR, loyR, infR)
+        # @return newSen - A reference to the new Senator
+        ###########################################################################
         idNum, name, milR, ortR, loyR, infR = senatorTuple
         newSen = Senator(idNum, name, milR, ortR, loyR, infR)
-        self.senatorList.append(newSen)
+        # Add to the end of the list
+        if addIndex == -1:
+            self.senatorList.append(newSen)
+        else:
+            print addIndex
+            self.senatorList.insert(addIndex, newSen)
         # Adjust faction ratings
         self.milRating += milR
         self.infRating += infR
         self.ortRating += ortR
         self.votes     += ortR
+        # Add to frame
+        if addToFrame:
+            self.myPlayer.playerFrameId.InsertItem(newSen.famId, newSen.GetTup())
+        return newSen
+        
+    def RemoveSenator(self, sen):
+        ###########################################################################
+        # @brief Remove senator from the faction
+        # @param [in] sen - senator
+        ###########################################################################
+        # Adjust faction ratings
+        self.milRating -= sen.military
+        self.infRating -= sen.influence
+        self.ortRating -= sen.oratory
+        self.votes     -= sen.oratory + sen.knights        
+        # Adjust lists
+        self.senatorList.remove(sen)
+        self.myPlayer.playerFrameId.DeleteItem(sen.famId)
+        
+    def GetSenatorById(self, ident):
+        ###########################################################################
+        # @brief Lookup senator by id and return Senator
+        # @param [in] ident - senator id number
+        # @return Senator - If found return senator otherwise return None
+        ###########################################################################
+        for s in self.senatorList:
+            if s.famId == ident:
+                return s
+        
+    def ClearOffices(self):
+        #@todo Assign councils / Dictator - Procouncil
+        #@todo Mark councils ineligible for office
+        for s in self.senatorList:
+            s.office = ''
+        
+    def SelectOffice(self, officeText):
+        infGain = 0        
+        if officeText == 'Dictator':
+            infGain = 7
+        elif officeText == 'Master of Horse':
+            infGain = 3
+        elif officeText == 'Rome Council':
+            infGain = 5
+        elif officeText == 'Field Council':
+            infGain = 5
+        elif officeText == 'Censor':
+            infGain = 5
+        for s in self.senatorList:
+            # Is senator eligible
+            if s.office == '':
+                s.office       = officeText
+                s.influence   += infGain
+                s.priorCouncil = True
+                break
         
     def GetPersonalRevenue(self):
         result = 0
@@ -164,7 +298,11 @@ class Faction:
         for s in self.senatorList:
             result += s.GetPersonalRevenue()
         return result
-        
+    
+    def GetTup(self):
+        #colStr = ("Faction Name","Military","Oratory","Inf","Votes","Treasury","")
+        return (self.name, self.milRating, self.ortRating, self.infRating, self.votes, self.treasury)
+    
     def dump(self):
         print "---------------"
         print "Faction : %s  Sen Cnt (%d)" % (self.name,len(self.senatorList))
@@ -173,14 +311,20 @@ class Faction:
             s.dump()
 
 class Player():
+###########################################################################
 # @brief
 #    Base class for player type
-#    
+###########################################################################
     def __init__(self, faction, name):
         self.myFaction = faction
         self.name = name
         # Link Player and Faction
         self.myFaction.AssignPlayer(self)
+        
+    def CreatePlayerFrame(self, gui):
+        # create frame for player data        
+        self.playerFrameId, self.overviewId = gui.AddPlayer(self.myFaction.name)
+        self.gui = gui
             
     def CollectPersonalRevenue(self):
         # Do nothing in base class
@@ -188,11 +332,26 @@ class Player():
         
     def Phase2Action_Charity(self):
         self.x = 2
+        
+    def InitialFrame(self):        
+        # Update frame with senator data
+        for s in self.myFaction.senatorList:
+            self.playerFrameId.InsertItem(s.famId, s.GetTup())
+        # Update Faction data
+        self.overviewId.InsertItem(self.myFaction.name, self.myFaction.GetTup())
+            
+    def UpdateFrame(self):        
+        # Update frame with senator data
+        for s in self.myFaction.senatorList:
+            self.playerFrameId.ModifyItem(s.famId, s.GetTup())
+        # Update Faction data
+        self.overviewId.ModifyItem(self.myFaction.name, self.myFaction.GetTup())
 
 class AutoPlayer(Player):
+###########################################################################
 # @brief
 #    Simulated player with defined behaviors
-#    
+###########################################################################
     def __init__(self, faction, name):
         Player.__init__(self, faction, name)
         self.Configure()
@@ -234,6 +393,7 @@ class AutoPlayer(Player):
             self.myFaction.senatorList = sorted(self.myFaction.senatorList, key=lambda sen: sen.influence+sen.pop, reverse=True)            
         # Assign new faction leader
         self.myFaction.senatorList[0].factionLeader = True
+        self.myFaction.senatorList[0].priorCouncil  = True
     
     def CollectPersonalRevenue(self):
         moneyPool = self.myFaction.GetPersonalRevenue()
@@ -249,7 +409,7 @@ class AutoPlayer(Player):
         elif self.revenueSplit == 'D6':
             # D6 to faction treasury rem to faction leader
             if moneyPool >= 6:
-                shareAmt = random.randint(1,6)
+                shareAmt = Roll1d6()
             else:
                 shareAmt = random.randint(1,moneyPool)
             self.myFaction.treasury += shareAmt
@@ -259,30 +419,120 @@ class AutoPlayer(Player):
             for s in self.myFaction.senatorList:
                 s.money += shareAmt
             self.myFaction.treasury += moneyPool - shareAmt*len(self.myFaction.senatorList)
-                
         
-class ROR():
+class ROR(threading.Thread):
+###########################################################################
 # @brief
 #    Game Engine for Republic of Rome
 #
 # @var playerCnt - Number of players in the game
 # @var factions  - List of player factions
 # @var phase     - Current game phase
-    def __init__(self):
+###########################################################################
+    def __init__(self, gui):
+        threading.Thread.__init__(self)
         # Number of players
         self.playerCnt = 5
         
-        # Faction List    
+        # Save reference to gui
+        self.gui = gui
+        
+        # Faction List
         self.factions = []
         self.players  = []
-        self.turn  = 0        
+        
+        # Game Info
+        self.turn  = 1
+        self.phase = 0        
         self.setup = False
+        self.curiaFamilies    = []
+        self.curiaLeaders     = []
+        self.curiaConcessions = []
+        self.wars             = []
+        self.forum            = []
+        
+        # Action queue
+        self.jobQueue = Queue.Queue()
+        
+    def run(self):
+        ###########################################################################
+        # @brief Game processing thread
+        ###########################################################################
+        # Update display info
+        for f in self.factions:
+            f.myPlayer.InitialFrame()
+        print 'Starting game engine thread'
+        forever = True
+        while forever:
+            # Update display info
+            self.factions = sorted(self.factions, reverse=True)
+            for f in self.factions:
+                f.myPlayer.UpdateFrame()
+            # Block forever until user requests something
+            job = self.jobQueue.get(block=True)
+            if job == 'next_phase':
+                self.phase += 1            
+                self.GameTurn()
             
+        print 'Game Over!'
+            
+    def CmdNextPhase(self):
+        print 'CmdNextPhase pressed - added to job queue'
+        self.jobQueue.put('next_phase')
+        
+    def GameTurn(self):
+        ###########################################################################
+        # @brief Setup next game phase
+        ###########################################################################
+        # Check for turn advancement
+        if self.phase > 7:
+            print "------------------"
+            print "-- Turn %d" % (self.turn)
+            print "------------------"
+            self.phase = 1
+            self.turn += 1
+            for f in self.factions:
+                f.dump()
+            
+        # Execute phase
+        text = 'INVALID'
+        if self.phase == 1:
+            text = 'MORTALITY'
+            self.MortalityPhase()
+        
+        elif self.phase == 2:
+            text = 'REVENUE'
+            self.RevenuePhase()
+            
+        elif self.phase == 3:
+            text = 'FORUM'
+            self.ForumPhase()
+            
+        elif self.phase == 4:
+            text = 'POPULATION'
+            self.PopulationPhase()
+            
+        elif self.phase == 5:
+            text = 'SENATE'
+            self.SenatePhase()
+            
+        elif self.phase == 6:
+            text = 'COMBAT'
+            self.CombatPhase()
+            
+        elif self.phase == 7:
+            text = 'REVOLUTION'
+            self.RevolutionPhase()
+            
+        self.gui.phase.SetPhase(self.turn, text)
+                
     def GameSetup(self):
+        ###########################################################################
+        # @brief Perform initial game setup
+        ###########################################################################
         # Only perform setup once
         if self.setup == True:
-            return
-        
+            return        
         self.setup = True
         
         # Sort initial list of senators for Early Republic
@@ -338,24 +588,69 @@ class ROR():
         # Assign faction leader for each player based on player criteria
         for p in self.players:
             p.AssignFactionLeader()
+            p.CreatePlayerFrame(self.gui)
+            if p.myFaction.name == 'Populists':
+                p.myFaction.SelectOffice('Rome Council')
+            
+        # Assign callback for next phase button
+        self.gui.cmdFrame.AddHook('next_phase', self.CmdNextPhase)
+    
+    def DrawMortalityChits(self, drawCount = 1):
+        ###########################################################################
+        # @brief Draw number of mortality chits and return a list of selected
+        #        numbers
+        #
+        # There are 36 available chits
+        #     1-30 are families that need to be searched
+        #     31-32 are pick two (pick two are re-added)
+        #     33-36 are none
+        #
+        # @param [in] drawCount - Number of chits to draw
+        # @return list of family numbers drawn
+        ###########################################################################
+        killList = []
+        picksRemaining = 1
         
-    def GameTurn(self):
-        self.turn += 1
-        print "------------------"
-        print "-- Turn %d" % (self.turn)
-        print "------------------"
-        self.MortalityPhase()
-        self.RevenuePhase()
-        self.ForumPhase()
-        self.PopulationPhase()
-        self.SenatePhase()
-        self.CombatPhase()
-        self.RevolutionPhase()
-        for f in self.factions:
-            f.dump()
-        
+        while (picksRemaining > 0):
+            killme = random.randint(1,36)
+            print 'Kill value is %d' %(killme)
+            picksRemaining -= 1
+            if killme <= 30:
+                # Determine if player already selected
+                if killme in killList:
+                    print 'cont - already in list redo pick'
+                    picksRemaining += 1
+                    continue
+                else:
+                    killList.append(killme)
+            elif killme <= 32:
+                # pick two more
+                picksRemaining += 2
+        return killList
+
     def MortalityPhase(self):
+        ###########################################################################
+        # @brief Execute Mortality Phase of the game turn.  Draws 1 mortality chit
+        #        and process the results.  No user interaction needed.
+        ###########################################################################
         print "-- Mortality Phase"
+        killList = self.DrawMortalityChits()
+        for k in killList:
+            for f in self.factions:
+                s = f.GetSenatorById(k)
+                if s:
+                    print 'Senator %s from faction %s has died' % (s.name, f.name)
+                    # If the faction leader died then allow user to keep
+                    if s.factionLeader:
+                        print 'Faction Leader died'
+                        f.RemoveSenator(s)
+                        # Re-adding Senator to the list
+                        newsen = f.AddSenator(familyList[k-1], addIndex=0, addToFrame=True)
+                        # Re-make senator the faction leader
+                        newsen.factionLeader = True
+                    else:
+                        f.RemoveSenator(s)
+                        self.curiaFamilies.append(k)
         
     def RevenuePhase(self):
         print "-- Revenue Phase"
@@ -399,11 +694,13 @@ class ROR():
     def RevolutionPhase(self):
         print "-- Revolution Phase"
         
-# Main Test Code    
-engine = ROR()
+# GUI runs in main thread
+root = tk.Tk()
+gui = RorGui.ROR_GUI(root)
+
+# Create Game Engine    
+engine = ROR(gui)
 engine.GameSetup()
+engine.start()
 
-engine.GameTurn()
-engine.GameTurn()
-engine.GameTurn()
-
+root.mainloop()        
